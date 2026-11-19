@@ -7,6 +7,7 @@ from turbofan import conformal as cf
 from turbofan.data import load_subset, split_units
 from turbofan.decision import CostModel, policy_cost, summarise, tune_margin
 from turbofan.metrics import bootstrap_ci, nasa_score, rmse
+from turbofan.models import group_holdout
 from turbofan.preprocess import ConditionNormalizer, make_windows, window_features
 from turbofan.synthetic import write_subset
 
@@ -33,6 +34,24 @@ def test_split_units_disjoint():
     fit, cal = split_units(np.arange(1, 101), 0.25, seed=0)
     assert len(cal) == 25 and len(fit) == 75
     assert not set(fit) & set(cal)
+
+
+def test_group_holdout_keeps_engines_whole(synth):
+    sub = load_subset(synth, "FD001")
+    fit_u, cal_u = split_units(sub.train["unit"].to_numpy(), 0.25, seed=0)
+    fit_df = sub.train[sub.train["unit"].isin(fit_u)]
+    norm = ConditionNormalizer(1).fit(fit_df)
+    w = make_windows(norm.transform(fit_df), norm.channels, window=20)
+    for seed in range(5):
+        tr, va = group_holdout(w.unit, 0.15, seed)
+        assert tr.any() and va.any()
+        assert not (tr & va).any() and (tr | va).all()
+        # no engine contributes windows to both the training and early-stopping sides
+        assert not set(w.unit[tr].tolist()) & set(w.unit[va].tolist())
+        # the early-stopping engines come from the fit engines only, never calibration
+        assert set(w.unit[va].tolist()) <= set(fit_u.tolist())
+        assert not set(w.unit[va].tolist()) & set(cal_u.tolist())
+    assert len(np.unique(w.unit[group_holdout(w.unit, 0.15, 0)[1]])) == round(0.15 * len(fit_u))
 
 
 def test_normalizer_drops_constant_and_removes_condition_shift(synth):
@@ -108,11 +127,16 @@ def test_decision_costs():
 def test_end_to_end_synthetic(synth, tmp_path):
     from turbofan.pipeline import Config, run_all
 
-    cfg = Config(subsets=("FD001",), epochs=2, n_estimators=40, n_boot=50, window=20)
+    cfg = Config(subsets=("FD001",), epochs=2, n_estimators=40, n_boot=50, window=20,
+                 seeds=(0, 1), nn_lrs=(1e-3, 3e-3), nn_widths=(8,))
     payload = run_all(synth, tmp_path, cfg, log=lambda *_: None)
     m = json.loads((tmp_path / "metrics.json").read_text())
     res = m["subsets"]["FD001"]
     assert set(res["models"]) == {"LightGBM", "XGBoost", "1D-CNN", "LSTM", "Weibull AFT"}
-    assert 0 <= res["intervals"]["CQR-LightGBM"]["coverage"] <= 1
+    assert 0 <= res["intervals"]["CQR-LightGBM"]["coverage_mean"] <= 1
+    assert len(res["models"]["LSTM"]["rmse_seeds"]) == 2
+    assert len(res["nn_tuning"]["1D-CNN"]) == 2  # one entry per grid point
+    for sel in res["selection"]:  # early stopping picked a finite number of rounds / epochs
+        assert 1 <= sel["LightGBM_rounds"] <= 40 and sel["LSTM_epochs"] >= 1
     assert (tmp_path / "coverage_width.png").exists()
     assert payload["subsets"]["FD001"]["n_test_engines"] == 8

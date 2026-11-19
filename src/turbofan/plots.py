@@ -27,13 +27,12 @@ def fig_rmse(payload: dict, path: Path) -> None:
     width = 0.8 / len(models)
     x = np.arange(len(subs))
     for i, m in enumerate(models):
-        vals = [payload["subsets"][s]["models"][m]["rmse"] for s in subs]
-        ci = np.array([payload["subsets"][s]["models"][m]["rmse_ci95"] for s in subs])
-        err = np.abs(ci.T - np.array(vals))
+        vals = [payload["subsets"][s]["models"][m]["rmse_mean"] for s in subs]
+        err = [payload["subsets"][s]["models"][m]["rmse_sd"] for s in subs]
         ax.bar(x + i * width - 0.4 + width / 2, vals, width, yerr=err, capsize=2, label=m,
                color=MODEL_COLORS.get(m, GREY))
     ax.set_xticks(x, subs)
-    ax.set_ylabel("Test RMSE (cycles)")
+    ax.set_ylabel("Test RMSE (cycles), mean and SD")
     ax.legend(ncol=5, fontsize=7.5, frameon=False, loc="upper left")
     _style(ax)
     fig.tight_layout()
@@ -49,8 +48,8 @@ def fig_coverage(payload: dict, path: Path, alpha: float) -> None:
     width = 0.8 / len(methods)
     x = np.arange(len(subs))
     for i, (m, c) in enumerate(zip(methods, colors, strict=True)):
-        cov = [payload["subsets"][s]["intervals"][m]["coverage"] for s in subs]
-        wid = [payload["subsets"][s]["intervals"][m]["width"] for s in subs]
+        cov = [payload["subsets"][s]["intervals"][m]["coverage_mean"] for s in subs]
+        wid = [payload["subsets"][s]["intervals"][m]["width_mean"] for s in subs]
         off = x + i * width - 0.4 + width / 2
         axes[0].bar(off, cov, width, color=c, label=m)
         axes[1].bar(off, wid, width, color=c, label=m)
@@ -61,8 +60,9 @@ def fig_coverage(payload: dict, path: Path, alpha: float) -> None:
     for ax in axes:
         ax.set_xticks(x, subs)
         _style(ax)
-    axes[0].legend(fontsize=6.5, frameon=False, loc="lower left")
-    fig.tight_layout()
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, fontsize=7, frameon=False, loc="upper center", ncol=4)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(path, dpi=200)
     plt.close(fig)
 
@@ -92,12 +92,12 @@ def fig_cost(all_arrays: dict, payload: dict, path: Path) -> None:
     for c, (name, arr) in zip(palette, all_arrays.items(), strict=False):
         ax.plot(arr["margins"], arr["test_costs"], color=c, label=f"{name} test")
         ax.plot(arr["margins"], arr["cal_costs"], color=c, ls=":", lw=1)
-        m = payload["subsets"][name]["tuned_margin"]
+        m = arr["tuned_margin"]
         ax.axvline(m, color=c, lw=0.6, alpha=0.5)
     ax.set_xlabel("Safety margin m (maintain at predicted RUL - m)")
     ax.set_ylabel("Mean cost per engine")
     ax.legend(fontsize=7.5, frameon=False, ncol=2)
-    ax.set_title("Solid: test engines; dotted: calibration engines; vertical: tuned m",
+    ax.set_title("Seed 0. Solid: test engines; dotted: calibration engines; vertical: tuned m",
                  fontsize=8)
     _style(ax)
     fig.tight_layout()

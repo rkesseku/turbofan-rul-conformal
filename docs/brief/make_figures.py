@@ -36,9 +36,9 @@ def architecture():
     box(ax, 0.1, 2.5, 2.1, 1.9, "C-MAPSS data",
         "FD001-FD004\nrun-to-failure train\ntruncated test + RUL\nRUL capped at 125")
     box(ax, 2.6, 2.5, 2.2, 1.9, "Preprocess",
-        "engine-level split\n75% fit / 25% calibrate\nper-condition z-score\n30-cycle windows")
+        "engine-level split\n75% fit / 25% calibrate\n(15% of fit engines\nfor early stopping)\nper-condition z-score")
     box(ax, 5.2, 2.5, 2.2, 1.9, "Models",
-        "LightGBM, XGBoost\n(window features)\n1D-CNN, LSTM\nWeibull AFT survival")
+        "LightGBM, XGBoost\n(window features)\n1D-CNN, LSTM\nWeibull AFT survival\n3 training seeds")
     box(ax, 7.8, 2.5, 2.1, 1.9, "Conformal",
         "split conformal\nCQR on LightGBM\nquantiles (5%, 95%)\ntarget: 90% coverage")
     box(ax, 2.6, 0.15, 3.2, 1.8, "Evaluate (official test sets)",
