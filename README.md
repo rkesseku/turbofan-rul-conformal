@@ -88,7 +88,7 @@ Trusting the point estimate costs 2.6–4.5 times as much as the uncertainty-awa
 ![Coverage and width](docs/results/coverage_width.png)
 ![Cost vs margin](docs/results/cost_vs_margin.png)
 
-A 5-page summary is in [`docs/brief/brief.pdf`](docs/brief/brief.pdf).
+A short summary is in [`docs/brief/brief.pdf`](docs/brief/brief.pdf).
 
 ## Limitations
 

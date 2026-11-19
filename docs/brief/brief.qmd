@@ -1,4 +1,6 @@
 ---
+bibliography: references.bib
+bibliographystyle: apa
 linkcolor: "#1f4e9e"
 format:
   typst:
@@ -12,6 +14,8 @@ format:
 
 ```{=typst}
 #set text(hyphenate: false)
+#set bibliography(title: "References")
+#show bibliography: set par(justify: false)
 // Three-rule tables (top, below header, bottom) and bold "Figure N" / "Table N" labels
 #set table.hline(stroke: 0.6pt)
 #show table: it => box(stroke: (top: 1pt, bottom: 1pt), it)
@@ -25,6 +29,7 @@ format:
 #let glance(body) = block(fill: rgb("#eef3fb"), stroke: (left: 3pt + rgb("#1f4e9e")), inset: 10pt, radius: 2pt, width: 100%, body)
 // Header: red title, subtitle, author, repository link
 #align(center)[
+  #set par(justify: false)
   #text(size: 17pt, weight: "bold", fill: rgb("#b91c1c"))[Turbofan Predictive Maintenance with Conformal Intervals]
   #v(0.5em)
   #text(size: 12pt, weight: "bold")[Predicting how long a jet engine has left, saying how sure we are, and deciding when to service it]
@@ -32,6 +37,8 @@ format:
   #text(size: 11pt)[Reagan Kesseku, Ph.D.]
   #linebreak()
   #text(size: 10pt)[#link("https://github.com/rkesseku/turbofan-rul-conformal")[github.com/rkesseku/turbofan-rul-conformal]]
+  #v(0.45em)
+  #text(size: 9.5pt)[#emph[Keywords:] predictive maintenance; remaining useful life; conformal prediction; uncertainty quantification; C-MAPSS]
 ]
 #v(0.5em)
 ```
@@ -60,7 +67,7 @@ This project answers both questions on the standard public benchmark, under an e
 
 ## The data
 
-C-MAPSS (Saxena et al., 2008) is NASA's simulated turbofan degradation data set. It has four subsets, *FD001–FD004*, of increasing difficulty: one or six operating conditions (altitude, Mach number, throttle setting) and one or two fault modes. Each training engine runs from healthy to failure. Each test engine is cut off at an unknown point, and NASA provides its true remaining life. FD001 and FD003 have 100 test engines each, and FD002 and FD004 have 259 and 248. The data are simulated, so they contain no real fleet or personal information. They are a widely used, well-understood proxy for real engines.
+C-MAPSS [@saxena2008] is NASA's simulated turbofan degradation data set. It has four subsets, *FD001–FD004*, of increasing difficulty: one or six operating conditions (altitude, Mach number, throttle setting) and one or two fault modes. Each training engine runs from healthy to failure. Each test engine is cut off at an unknown point, and NASA provides its true remaining life. FD001 and FD003 have 100 test engines each, and FD002 and FD004 have 259 and 248. The data are simulated, so they contain no real fleet or personal information. They are a widely used, well-understood proxy for real engines.
 
 
 # Approach
@@ -75,10 +82,10 @@ C-MAPSS (Saxena et al., 2008) is NASA's simulated turbofan degradation data set.
 2. *Engine-level split.* Training engines are divided 75/25 into *fit* and *calibration* sets, so no engine appears in both. This prevents the most common leak in RUL work, where windows from one engine land in both training and validation data.
 3. *Normalisation.* In FD002 and FD004, the six operating conditions shift sensor readings far more than wear does. The three operating settings are clustered, each sensor is standardised within its cluster, and sensors that are constant or unrelated to RUL are dropped. Everything is fitted on fit engines only.
 4. *Models.*
-   - Gradient-boosted trees (LightGBM, XGBoost) use summary features of the last 30 cycles: last value, mean, spread, minimum, maximum, trend slope and recent mean.
+   - Gradient-boosted trees, LightGBM [@ke2017] and XGBoost [@chen2016xgboost], use summary features of the last 30 cycles: last value, mean, spread, minimum, maximum, trend slope and recent mean.
    - A 1D convolutional network and a two-layer LSTM read the raw 30-cycle window.
-   - A Weibull accelerated-failure-time survival model gives a classical reliability-engineering baseline.
-5. *Conformal intervals.* Split conformal prediction takes the calibration engines' absolute errors and widens each test prediction by the error quantile that guarantees 90% coverage in finite samples. *Conformalized quantile regression* (CQR; Romano et al., 2019) does the same for LightGBM's 5% and 95% quantile models. Its intervals can be wider for uncertain engines and narrower for confident ones.
+   - A Weibull accelerated-failure-time survival model, fitted with lifelines [@davidsonpilon2019], gives a classical reliability-engineering baseline.
+5. *Conformal intervals.* Split conformal prediction [@lei2018] takes the calibration engines' absolute errors and widens each test prediction by the error quantile that guarantees 90% coverage in finite samples. *Conformalized quantile regression* (CQR) [@romano2019] does the same for LightGBM's 5% and 95% quantile models. Its intervals can be wider for uncertain engines and narrower for confident ones.
 6. *Decisions.* When an engine is inspected, maintenance is scheduled some number of cycles ahead.
    - If the engine fails first, the cost is 10, standing for an unscheduled failure.
    - Otherwise the cost is 1 for the planned visit plus 0.01 for every cycle of useful life given up.
@@ -159,4 +166,3 @@ Acting on the point estimate is the worst policy by a wide margin: about half of
 
 `pip install -e ".[dev]"`, then `pytest`, `turbofan smoke` (synthetic check) and `turbofan run-all --data data/raw/cmapss` (full run). Data: NASA Prognostics Center of Excellence repository (`CMAPSSData.zip` into `data/raw/cmapss/`).
 
-*References.* A. Saxena, K. Goebel, D. Simon, N. Eklund, "Damage propagation modeling for aircraft engine run-to-failure simulation," PHM 2008. Y. Romano, E. Patterson, E. Candès, "Conformalized quantile regression," NeurIPS 2019.
