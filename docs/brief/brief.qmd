@@ -1,5 +1,5 @@
 ---
-title: "turbofan-rul-conformal"
+title: "Turbofan Predictive Maintenance with Conformal Intervals"
 subtitle: "Predicting how long a jet engine has left, saying how sure we are, and deciding when to service it"
 author:
   - name: "Reagan Kesseku · Project brief · github.com/rkesseku/turbofan-rul-conformal"
