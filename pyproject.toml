@@ -1,0 +1,58 @@
+[project]
+name = "turbofan-rul-conformal"
+version = "0.1.0"
+description = "Remaining-useful-life prediction on NASA C-MAPSS with gradient boosting, 1D-CNN, LSTM and a Weibull survival baseline, conformal prediction intervals, and a cost-based maintenance decision layer."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Reagan Kesseku" }]
+license = { text = "MIT" }
+keywords = ["predictive-maintenance", "remaining-useful-life", "conformal-prediction", "c-mapss", "survival-analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "lightgbm>=4.0",
+    "xgboost>=2.0",
+    "torch>=2.1",
+    "lifelines>=0.27",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+turbofan = "turbofan.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/rkesseku/turbofan-rul-conformal"
+Repository = "https://github.com/rkesseku/turbofan-rul-conformal"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["turbofan*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning", "ignore::UserWarning"]
