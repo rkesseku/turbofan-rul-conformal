@@ -100,14 +100,14 @@ All numbers come from one run of `turbofan run-all` (seed 0) and are stored in `
 ## Point accuracy
 
 | Model | FD001 | FD002 | FD003 | FD004 |
-|---|---|---|---|---|
+|---------------------------------|-----------------|-----------------|-----------------|-----------------|
 | LightGBM | **12.04** | **12.94** | **13.52** | **14.11** |
 | XGBoost | 12.11 | 12.96 | 13.53 | 14.36 |
 | 1D-CNN | 16.27 | 18.60 | 19.16 | 19.22 |
 | LSTM | 15.84 | 18.28 | 18.07 | 17.35 |
 | Weibull AFT | 17.03 | 16.22 | 19.35 | 23.28 |
 
-: Test RMSE in cycles (lower is better). LightGBM 95% bootstrap intervals: FD001 [9.6, 14.3], FD002 [11.5, 14.3], FD003 [10.9, 15.9], FD004 [12.2, 16.1]. {#tbl-rmse}
+: Test RMSE in cycles (lower is better; bold is best). LightGBM 95% bootstrap intervals: FD001 [9.6, 14.3], FD002 [11.5, 14.3], FD003 [10.9, 15.9], FD004 [12.2, 16.1]. {#tbl-rmse}
 
 ![Test RMSE by model and subset with 95% bootstrap intervals over test engines.](figures/rmse_by_model.png){#fig-rmse width=72%}
 
@@ -116,13 +116,13 @@ With good window features, gradient boosting was the most accurate model on ever
 ## Uncertainty
 
 | 90% interval | FD001 | FD002 | FD003 | FD004 |
-|---|---|---|---|---|
+|-----------------------|-------------------|-------------------|-------------------|-------------------|
 | Raw quantiles | 0.71 (32.6) | 0.80 (34.3) | 0.65 (27.9) | 0.69 (32.3) |
-| CQR, LightGBM | 0.94 (45.0) | 0.91 (39.5) | 0.93 (47.2) | 0.89 (43.3) |
-| SC, LightGBM | 0.91 (42.4) | 0.92 (46.9) | 0.89 (45.8) | 0.92 (48.4) |
-| SC, LSTM | 0.87 (49.8) | 0.92 (62.9) | 0.84 (54.6) | 0.90 (56.3) |
+| CQR, LightGBM | 0.94 (45.0) | **0.91** (39.5) | 0.93 (47.2) | 0.89 (43.3) |
+| SC, LightGBM | **0.91** (42.4) | 0.92 (46.9) | **0.89** (45.8) | 0.92 (48.4) |
+| SC, LSTM | 0.87 (49.8) | 0.92 (62.9) | 0.84 (54.6) | **0.90** (56.3) |
 
-: Empirical coverage on the official test engines (mean width in cycles); target 0.90. SC = split conformal. {#tbl-cov}
+: Empirical coverage on the official test engines (mean width in cycles); target 0.90; bold is the coverage closest to the target. SC = split conformal. {#tbl-cov}
 
 ![Coverage (left, dashed line = 90% target) and width (right) of each interval method.](figures/coverage_width.png){#fig-cov width=72%}
 
@@ -134,13 +134,13 @@ The raw quantile model is overconfident: its "90%" intervals contained the true 
 ## From predictions to maintenance decisions
 
 | Policy (LightGBM) | FD001 | FD002 | FD003 | FD004 |
-|---|---|---|---|---|
+|--------------------------|------------------|-------------------|------------------|-------------------|
 | Point estimate | 6.00 (55%) | 4.57 (38%) | 6.18 (57%) | 5.60 (50%) |
 | SC lower bound | 1.57 (4%) | 1.73 (5%) | 1.94 (8%) | 1.68 (4%) |
 | CQR lower bound | 1.48 (3%) | 1.66 (4%) | 1.65 (5%) | 1.90 (7%) |
-| Tuned margin | **1.34** (0%) | **1.46** (0.4%) | **1.58** (3%) | **1.49** (0.4%) |
+| Tuned margin | **1.34 (0%)** | **1.46 (0.4%)** | **1.58 (3%)** | **1.49 (0.4%)** |
 
-: Mean cost per test engine (share of engines that fail before maintenance). Tuned margins were 39, 41, 35 and 43 cycles. {#tbl-cost}
+: Mean cost per test engine (share of engines that fail before maintenance). Tuned margins were 39, 41, 35 and 43 cycles. Bold marks the lowest cost and failure rate. {#tbl-cost}
 
 ![Mean cost against safety margin. Calibration curves (dotted) and test curves (solid) bottom out in the same region, so a margin chosen on held-out engines transfers to new engines.](figures/cost_vs_margin.png){#fig-cost width=62%}
 
