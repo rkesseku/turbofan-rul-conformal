@@ -1,6 +1,9 @@
 ---
 bibliography: references.bib
-bibliographystyle: apa
+csl: apa.csl
+citeproc: true
+link-citations: true
+link-bibliography: true
 linkcolor: "#1f4e9e"
 format:
   typst:
@@ -13,6 +16,7 @@ format:
 ---
 
 ```{=typst}
+#show <refs>: set par(hanging-indent: 0.5in, first-line-indent: 0pt, justify: false)
 #set text(hyphenate: false)
 #set bibliography(title: "References")
 #show cite: set text(fill: rgb("#1f4e9e"))
@@ -39,7 +43,7 @@ format:
   #linebreak()
   #text(size: 10pt)[#link("https://github.com/rkesseku/turbofan-rul-conformal")[github.com/rkesseku/turbofan-rul-conformal]]
   #v(0.45em)
-  #text(size: 9.5pt)[#emph[Keywords:] predictive maintenance; remaining useful life; conformal prediction; uncertainty quantification; C-MAPSS]
+  #text(size: 9.5pt)[#emph[Keywords:] predictive maintenance, remaining useful life, conformal prediction, uncertainty quantification, C-MAPSS]
 ]
 #v(0.5em)
 ```
@@ -47,9 +51,9 @@ format:
 ```{=typst}
 #glance[
 *At a glance* \
-*Problem:* Maintenance planners need to know how many cycles an engine has left, how certain that estimate is, and when to act. A single remaining-life number answers none of the last two. \
+*Problem:* Maintenance planners need to know how many cycles an engine has left, how certain that estimate is, and when to act. A single remaining-life number answers only the first. \
 *What I built:* A pipeline on NASA's C-MAPSS turbofan benchmark that trains five remaining-useful-life (RUL) models (LightGBM, XGBoost, 1D-CNN, LSTM, Weibull survival model), wraps them in conformal prediction intervals with a finite-sample coverage guarantee, and converts predictions into maintenance decisions under an explicit cost model. \
-*Headline result:* The best boosted model reached test RMSE *12.3 / 13.0 / 13.9 / 14.6 cycles* on FD001–FD004 (mean of three seeds). With early stopping on held-out engines and light tuning, the LSTM tied it on FD004 (14.0), while the best network trailed by 1.2–2.8 cycles elsewhere. Raw 90% quantile intervals covered only 71–82% of engines; split conformal raised this to *0.90–0.92*. Acting at the point estimate let 41–57% of test engines fail; a margin tuned on held-out engines cut failures to *under 1%* and expected cost by *3.3–4.4×*. Simulated data (see limitations). \
+*Headline result:* The best boosted model reached test RMSE *12.3 / 13.0 / 13.9 / 14.6 cycles* on FD001–FD004 (mean of three seeds). With early stopping on held-out engines and light tuning, the LSTM tied it on FD004 (14.0), while the best network trailed by 1.2–2.8 cycles elsewhere. Raw 90% quantile intervals covered only 71–82% of engines, and split conformal raised this to *0.90–0.92*. Acting at the point estimate let 41–57% of test engines fail. A margin tuned on held-out engines cut failures to *under 1%* and expected cost by *3.3–4.4×*. Simulated data (see limitations). \
 *Stack:* Python, pandas, scikit-learn, LightGBM, XGBoost, PyTorch, lifelines, matplotlib, pytest, GitHub Actions. \
 *Repo:* #link("https://github.com/rkesseku/turbofan-rul-conformal")[github.com/rkesseku/turbofan-rul-conformal]
 ]
@@ -57,47 +61,47 @@ format:
 
 # The problem
 
-Jet engines wear out gradually. Sensors on the engine (temperatures, pressures, fan and core speeds) drift as components degrade, and an engine that is serviced too late fails in operation, which is expensive and disruptive. One that is serviced too early throws away useful life. *Predictive maintenance* uses the sensor history to estimate the **remaining useful life (RUL)**: the number of operating cycles until failure.
+Jet engines wear out gradually. Their sensors (temperatures, pressures, fan and core speeds) drift as components degrade. An engine serviced too late fails in operation, which is expensive and disruptive, and one serviced too early throws away useful life. *Predictive maintenance* uses the sensor history to estimate the **remaining useful life (RUL)**, meaning the number of operating cycles until failure.
 
-Most published RUL work reports a single accuracy number and stops. In practice that leaves two questions unanswered:
+Most published RUL work reports a single accuracy number and stops there. That leaves two practical questions open.
 
 1. *How sure is the model?* "40 cycles left" means something very different if the plausible range is 35–45 or 5–75.
 2. *When should we act?* If the model is unbiased, its prediction is too late about half the time. Scheduling maintenance exactly at the predicted failure point therefore lets roughly half the engines fail first.
 
-This project answers both questions on the standard public benchmark, under an evaluation protocol designed not to flatter the model.
+This project takes up both questions on the standard public benchmark, with an evaluation protocol built so that it does not flatter the model.
 
 ## The data
 
-C-MAPSS [@saxena2008] is NASA's simulated turbofan degradation data set. It has four subsets, *FD001–FD004*, of increasing difficulty: one or six operating conditions (altitude, Mach number, throttle setting) and one or two fault modes. Each training engine runs from healthy to failure. Each test engine is cut off at an unknown point, and NASA provides its true remaining life. FD001 and FD003 have 100 test engines each, and FD002 and FD004 have 259 and 248. The data are simulated, so they contain no real fleet or personal information. They are a widely used, well-understood proxy for real engines.
+C-MAPSS [@saxena2008] is NASA's simulated turbofan degradation data set. It has four subsets, *FD001–FD004*, of increasing difficulty: one or six operating conditions (altitude, Mach number, throttle setting) and one or two fault modes. Each training engine runs from healthy to failure. Each test engine is cut off at an unknown point, and NASA supplies its true remaining life. FD001 and FD003 have 100 test engines each, while FD002 and FD004 have 259 and 248. Because the data are simulated, they hold no real fleet or personal information. They are still a widely used and well-understood proxy for real engines.
 
 
 # Approach
 
 ## Architecture
 
-![Pipeline. Engines are split once into fit and calibration sets; models see only fit engines; calibration engines set the interval width and the maintenance margin; the official test engines are touched only for final scoring.](figures/architecture.png){#fig-arch width=72%}
+![Pipeline. Engines are split once into fit and calibration sets. Models see only fit engines, calibration engines set the interval width and the maintenance margin, and the official test engines are touched only for final scoring.](figures/architecture.png){#fig-arch width=72%}
 
 ## How it works, end to end
 
-1. *Targets.* Each cycle's RUL is capped at 125 cycles, because degradation is invisible early in life (the standard piecewise-linear convention). Accuracy and coverage are scored against the capped truth. The maintenance costs use the true, uncapped remaining life.
-2. *Engine-level split.* Training engines are divided 75/25 into *fit* and *calibration* sets, so no engine appears in both. This prevents the most common leak in RUL work, where windows from one engine land in both training and validation data.
-   Model selection uses a second engine-level split: 15% of the fit engines are held out for early stopping (boosting rounds, network epochs) and for a small network tuning grid (learning rate {1e-3, 3e-3} × width {32, 64}). Calibration and test engines play no part in training or selection.
-3. *Normalisation.* In FD002 and FD004, the six operating conditions shift sensor readings far more than wear does. The three operating settings are clustered, each sensor is standardised within its cluster, and sensors that are constant or unrelated to RUL are dropped. Everything is fitted on fit engines only.
+1. *Targets.* Each cycle's RUL is capped at 125 cycles, because degradation is invisible early in life (the standard piecewise-linear convention). Accuracy and coverage are scored against the capped truth, but the maintenance costs use the true, uncapped remaining life.
+2. *Engine-level split.* Training engines are divided 75/25 into *fit* and *calibration* sets, so no engine appears in both. That rules out the most common leak in RUL work, in which windows from one engine end up in both training and validation data.
+   Model selection uses a second engine-level split, in which 15% of the fit engines are held out for early stopping (boosting rounds, network epochs) and for a small network tuning grid (learning rate {1e-3, 3e-3} × width {32, 64}). Calibration and test engines play no part in training or selection.
+3. *Normalisation.* In FD002 and FD004, the six operating conditions shift sensor readings far more than wear does. I cluster the three operating settings, standardise each sensor within its cluster, and drop sensors that are constant or unrelated to RUL. All of this is fitted on fit engines only.
 4. *Models.*
-   - Gradient-boosted trees, LightGBM [@ke2017] and XGBoost [@chen2016xgboost], use summary features of the last 30 cycles: last value, mean, spread, minimum, maximum, trend slope and recent mean.
+   - Gradient-boosted trees, LightGBM [@ke2017] and XGBoost [@chen2016xgboost], use summary features of the last 30 cycles (last value, mean, spread, minimum, maximum, trend slope and recent mean).
    - A 1D convolutional network and a two-layer LSTM read the raw 30-cycle window.
    - A Weibull accelerated-failure-time survival model, fitted with lifelines [@davidsonpilon2019], gives a classical reliability-engineering baseline.
-5. *Conformal intervals.* Split conformal prediction [@lei2018] takes the calibration engines' absolute errors and widens each test prediction by the error quantile that guarantees 90% coverage in finite samples. *Conformalized quantile regression* (CQR) [@romano2019] does the same for LightGBM's 5% and 95% quantile models. Its intervals can be wider for uncertain engines and narrower for confident ones.
+5. *Conformal intervals.* Split conformal prediction [@lei2018] takes the calibration engines' absolute errors and widens each test prediction by the error quantile that guarantees 90% coverage in finite samples. *Conformalized quantile regression* (CQR) [@romano2019] does the same for LightGBM's 5% and 95% quantile models. Its intervals can widen for uncertain engines and narrow for confident ones.
 6. *Decisions.* When an engine is inspected, maintenance is scheduled some number of cycles ahead.
    - If the engine fails first, the cost is 10, standing for an unscheduled failure.
    - Otherwise the cost is 1 for the planned visit plus 0.01 for every cycle of useful life given up.
-   - Four policies are compared: act at the point estimate; act at the split-conformal lower bound; act at the CQR lower bound; or subtract a safety margin chosen to minimise cost on the calibration engines.
-7. *Evaluation.* Each official test engine contributes exactly one prediction, at its last observed cycle. Boosted models and networks are trained with three seeds, which change model initialisation and the held-out early-stopping engines; results are averaged over seeds. RMSE also carries a 95% bootstrap confidence interval over test engines, and the PHM08 asymmetric score penalises late predictions more than early ones.
+   - I compare four policies. Three act at the point estimate, the split-conformal lower bound or the CQR lower bound. The fourth subtracts a safety margin chosen to minimise cost on the calibration engines.
+7. *Evaluation.* Each official test engine contributes exactly one prediction, at its last observed cycle. Boosted models and networks are trained with three seeds, which change model initialisation and the held-out early-stopping engines, and results are averaged over seeds. RMSE also carries a 95% bootstrap confidence interval over test engines, and the PHM08 asymmetric score penalises late predictions more than early ones.
 
 
 # Results
 
-All numbers come from one run of `turbofan run-all` (fit/calibration split seed 0; training seeds 0, 1, 2) and are stored in `docs/results/metrics.json`.
+All numbers come from one run of `turbofan run-all` (fit/calibration split seed 0, training seeds 0, 1 and 2) and are stored in `docs/results/metrics.json`.
 
 ## Point accuracy
 
@@ -109,11 +113,11 @@ All numbers come from one run of `turbofan run-all` (fit/calibration split seed 
 | LSTM | 15.39 ± 0.53 | 14.16 ± 0.36 | 18.71 ± 0.69 | **14.01** ± 0.55 |
 | Weibull AFT | 17.03 | 16.22 | 19.35 | 23.28 |
 
-: Test RMSE in cycles, mean ± SD over three training seeds (lower is better; bold is the lowest mean). The Weibull model has no training randomness. LightGBM 95% bootstrap intervals over test engines (seed 0): FD001 [10.3, 15.4], FD002 [11.7, 14.5], FD003 [11.7, 16.7], FD004 [12.6, 16.2]. {#tbl-rmse}
+: Test RMSE in cycles, mean ± SD over three training seeds (lower is better, and bold is the lowest mean). The Weibull model has no training randomness. LightGBM 95% bootstrap intervals over test engines (seed 0): FD001 [10.3, 15.4], FD002 [11.7, 14.5], FD003 [11.7, 16.7], FD004 [12.6, 16.2]. {#tbl-rmse}
 
 ![Test RMSE by model and subset, mean and SD over three training seeds.](figures/rmse_by_model.png){#fig-rmse width=54%}
 
-Gradient boosting remained the most accurate model on FD001–FD003, by 1.2–2.8 cycles over the best network. On FD004 the LSTM had the lowest mean RMSE (14.01 against 14.64 for XGBoost), but the margin is about one seed SD and its asymmetric score (1081) is worse than LightGBM's (1002), so the two are best read as tied there. Engine-wise early stopping and a four-point grid mostly helped the networks: in an earlier single-seed run the best network trailed boosting by 3.2–5.3 cycles. Seed SDs (0.06–1.53 cycles) are much smaller than the test-sampling intervals. The survival model is weakest on FD004, where a linear model on a few principal components cannot absorb the remaining structure.
+Gradient boosting remained the most accurate model on FD001–FD003, by 1.2–2.8 cycles over the best network. On FD004 the LSTM had the lowest mean RMSE (14.01 against 14.64 for XGBoost), but the margin is about one seed SD and its asymmetric score (1081) is worse than LightGBM's (1002), so the two are best read as tied there. Engine-wise early stopping and a four-point grid mostly helped the networks. In an earlier single-seed run the best network trailed boosting by 3.2–5.3 cycles. Seed SDs (0.06–1.53 cycles) are much smaller than the test-sampling intervals. The survival model is weakest on FD004, where a linear model on a few principal components cannot absorb the remaining structure.
 
 ## Uncertainty
 
@@ -124,14 +128,14 @@ Gradient boosting remained the most accurate model on FD001–FD003, by 1.2–2.
 | SC, LightGBM | **0.90** (42.5) | 0.92 (46.5) | **0.90** (47.6) | 0.92 (48.5) |
 | SC, LSTM | 0.89 (50.9) | **0.91** (47.5) | 0.86 (57.9) | **0.91** (47.8) |
 
-: Empirical coverage on the official test engines, mean over three seeds (mean width in cycles); target 0.90; bold is the coverage closest to the target. SC = split conformal. {#tbl-cov}
+: Empirical coverage on the official test engines, mean over three seeds (mean width in cycles). The target is 0.90, and bold marks the coverage closest to it. SC = split conformal. {#tbl-cov}
 
 ![Coverage (left, dashed line = 90% target) and width (right) of each interval method.](figures/coverage_width.png){#fig-cov width=54%}
 
-The raw quantile model is overconfident: its "90%" intervals contained the true RUL for only 71–82% of engines. CQR fixed most of this at a cost of 3–9 extra cycles of width, but it was narrower than split conformal only on FD002 and fell below target on FD004 (0.88). Its quantile models were early-stopped after anywhere from 18 to 1240 rounds depending on the seed, which made its width unstable. Split conformal on LightGBM covered 0.90–0.92 on every subset. Interval width tracks accuracy: the LSTM's intervals are about as wide as LightGBM's on FD002 and FD004, where the two are similarly accurate, and 8–10 cycles wider on FD001 and FD003.
+The raw quantile model is overconfident. Its "90%" intervals contained the true RUL for only 71–82% of engines. CQR fixed most of this at a cost of 3–9 extra cycles of width, but it was narrower than split conformal only on FD002 and fell below target on FD004 (0.88). Its quantile models were early-stopped after anywhere from 18 to 1240 rounds depending on the seed, which made its width unstable. Split conformal on LightGBM covered 0.90–0.92 on every subset. Interval width tracks accuracy. The LSTM's intervals are about as wide as LightGBM's on FD002 and FD004, where the two are similarly accurate, and 8–10 cycles wider on FD001 and FD003.
 
 
-![FD001 test engines sorted by true RUL: LightGBM predictions with CQR 90% intervals. Engines near the 125-cycle cap are hard to tell apart; the interval widens accordingly.](figures/intervals_FD001.png){#fig-int width=48%}
+![FD001 test engines sorted by true RUL: LightGBM predictions with CQR 90% intervals. Engines near the 125-cycle cap are hard to tell apart, and the interval widens to match.](figures/intervals_FD001.png){#fig-int width=48%}
 
 ## From predictions to maintenance decisions
 
@@ -146,12 +150,12 @@ The raw quantile model is overconfident: its "90%" intervals contained the true 
 
 ![Mean cost against safety margin. Calibration curves (dotted) and test curves (solid) bottom out in the same region, so a margin chosen on held-out engines transfers to new engines.](figures/cost_vs_margin.png){#fig-cost width=46%}
 
-Acting on the point estimate is the worst policy by a wide margin: about half of the engines fail first. A conformal lower bound needs no cost assumptions and already cuts failures to 4–9% and cost by 2.6–3.7×. When the cost ratio is known, a margin tuned on calibration engines is cheapest on every subset. The price is giving up more useful life, 32–46 cycles per engine on average against 18–32 for the lower bounds.
+Acting on the point estimate is by far the worst policy, since about half of the engines fail first. A conformal lower bound needs no cost assumptions and already cuts failures to 4–9% and cost by 2.6–3.7×. When the cost ratio is known, a margin tuned on calibration engines is cheapest on every subset. It pays for this with more lost useful life, 32–46 cycles per engine on average against 18–32 for the lower bounds.
 
 
 ## Does tuning help?
 
-An Optuna study [@akiba2019optuna] per subset searched LightGBM's leaves, learning rate, minimum child samples, row and column sampling and L2 penalty (TPE with seed 0, up to 100 trials, the fixed recipe as trial 0, trees by early stopping). It minimised RMSE on the 15% of fit engines held out by seed 0 and never read calibration or test engines. Both recipes then ran the full protocol and were scored once on test. The run took 26.7 minutes with subsets in parallel; FD004 hit its time limit after 83 trials.
+An Optuna study [@akiba2019optuna] per subset searched LightGBM's leaves, learning rate, minimum child samples, row and column sampling and L2 penalty (TPE with seed 0, up to 100 trials, the fixed recipe as trial 0, trees by early stopping). It minimised RMSE on the 15% of fit engines held out by seed 0 and never read calibration or test engines. Both recipes then ran the full protocol and were scored once on test. The run took 26.7 minutes with subsets in parallel, and FD004 hit its time limit after 83 trials.
 
 ```{=typst}
 #set text(size: 9pt)
@@ -173,25 +177,25 @@ An Optuna study [@akiba2019optuna] per subset searched LightGBM's leaves, learni
 | tuned | **11.29** | **14.38** | **973** | **0.910** | 48.7 |
 | difference | −0.28 [−0.59, +0.02] | −0.33 [−0.65, −0.02] | −29 [−86, +34] | −0.7 [−2.2, +0.8] | +0.3 [+0.2, +0.3] |
 
-: Default against tuned LightGBM. Val RMSE: seed-0 validation engines; test columns: means over three seeds; coverage and width: 90% split-conformal intervals. Difference = tuned − default (coverage in percentage points) with a 95% paired bootstrap interval (validation engines for Val RMSE, test engines otherwise). Bold marks the better recipe within each subset: lowest RMSE, NASA score and width, coverage closest to the nominal 0.90. {#tbl-tune}
+: Default against tuned LightGBM. Val RMSE uses the seed-0 validation engines, test columns are means over three seeds, and coverage and width refer to 90% split-conformal intervals. Difference = tuned − default (coverage in percentage points) with a 95% paired bootstrap interval (validation engines for Val RMSE, test engines otherwise). Bold marks the better recipe within each subset (lowest RMSE, NASA score and width, and coverage closest to the nominal 0.90). {#tbl-tune}
 
 ```{=typst}
 #set text(size: 10.5pt)
 #set table(inset: 5pt)
 ```
 
-Every subset moved to a lower learning rate, more trees and a nonzero L2 penalty. Validation gains are optimistic (the winner was chosen there). On test, tuning helps beyond noise on FD003 (−1.09 cycles) and FD004 (−0.33), so LightGBM's RMSE there becomes 12.80 and 14.38. On FD001 and FD002 the intervals include zero, and the published numbers stand. Coverage and decision costs barely move (by at most 0.010 and 0.05), and no conclusion changes: on FD004 the LSTM's lead shrinks to 0.37 cycles, still a tie.
+Every subset moved to a lower learning rate, more trees and a nonzero L2 penalty. Validation gains are optimistic, because the winner was chosen there. On test, tuning helps beyond noise on FD003 (−1.09 cycles) and FD004 (−0.33), so LightGBM's RMSE there becomes 12.80 and 14.38. On FD001 and FD002 the intervals include zero, and the published numbers stand. Coverage and decision costs barely move (by at most 0.010 and 0.05), and no conclusion changes. On FD004 the LSTM's lead shrinks to 0.37 cycles, which is still a tie.
 
 # What this demonstrates
 
-- *Evaluation discipline.* Engine-level splits, early stopping and tuning on held-out engines rather than random windows, a calibration set that no model trains on or is selected with, official test sets used once, one prediction per engine, three training seeds, and bootstrap confidence intervals rather than bare point estimates.
-- *Uncertainty quantification that is checked, not assumed.* Two conformal methods implemented from first principles and verified against a deliberately overconfident baseline, with a unit test confirming 90% coverage on synthetic data.
+- *Evaluation discipline.* Engine-level splits, with early stopping and tuning on held-out engines instead of random windows. A calibration set that no model trains on or is selected with, official test sets used once, one prediction per engine, three training seeds, and bootstrap confidence intervals reported with the point estimates.
+- *Uncertainty quantification that is checked.* Two conformal methods implemented from first principles and verified against a deliberately overconfident baseline rather than assumed, with a unit test confirming 90% coverage on synthetic data.
 - *Decision-focused ML.* An explicit cost model, a policy tuned on held-out data, and an honest statement of what each policy trades away.
 - *Engineering.* An installable package with a CLI, 16 tests on synthetic C-MAPSS-format data (no downloads in CI), ruff-clean code, and CI on Python 3.10–3.12.
 
 # Limitations and next steps
 
-- *Three seeds, one split.* Seed SDs cover training randomness and the choice of early-stopping engines; the fit/calibration split is fixed. Repeating over calibration splits is the next step.
+- *Three seeds, one split.* Seed SDs cover training randomness and the choice of early-stopping engines, but the fit/calibration split is fixed. Repeating over calibration splits is the next step.
 - *Approximate guarantee.* Conformal coverage assumes calibration and test points are exchangeable. Windows from one engine are correlated, and test engines are truncated snapshots, so the guarantee holds only approximately. Seed-averaged conformal coverage ranged from 0.86 to 0.93 (0.84 to 0.95 for single seeds). Weighted or engine-blocked calibration would tighten this.
 - *Marginal coverage only.* Coverage is averaged over engines, not guaranteed within each RUL range. Coverage is also scored against the capped truth.
 - *Light network tuning and illustrative costs.* The networks had a four-point grid scored on one seed, and the CNN chose its corner on every subset. The cost model (failure = 10× a planned visit, 0.01 per wasted cycle) is illustrative.
@@ -199,5 +203,9 @@ Every subset moved to a lower learning rate, more trees and a nonzero L2 penalty
 
 # How to run it
 
-`pip install -e ".[dev]"`, then `pytest`, `turbofan smoke` (synthetic check) and `turbofan run-all --data data/raw/cmapss` (full run); `turbofan tune` runs the Optuna study. Data: NASA Prognostics Center of Excellence repository (`CMAPSSData.zip` into `data/raw/cmapss/`).
+`pip install -e ".[dev]"`, then `pytest`, `turbofan smoke` (synthetic check) and `turbofan run-all --data data/raw/cmapss` (full run). `turbofan tune` runs the Optuna study. Data: NASA Prognostics Center of Excellence repository (`CMAPSSData.zip` into `data/raw/cmapss/`).
 
+# References {.unnumbered}
+
+::: {#refs}
+:::
