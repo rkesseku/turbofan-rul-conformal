@@ -42,13 +42,21 @@ def group_holdout(units: np.ndarray, frac: float, seed: int) -> tuple[np.ndarray
 # ----------------------------------------------------------------------------- trees
 
 
+# The fixed LightGBM recipe used by ``run-all`` (the Optuna search in ``tuning.py`` starts here).
+LGBM_DEFAULTS = dict(learning_rate=0.03, num_leaves=31, min_child_samples=40, subsample=0.8,
+                     subsample_freq=1, colsample_bytree=0.8, reg_lambda=0.0)
+
+
 def fit_lgbm(X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray,
              quantile: float | None = None, seed: int = 0, n_estimators: int = 2000,
-             patience: int = 100) -> lgb.LGBMRegressor:
-    """LightGBM with the number of rounds chosen by early stopping on held-out engines."""
-    params = dict(n_estimators=n_estimators, learning_rate=0.03, num_leaves=31,
-                  min_child_samples=40, subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
-                  random_state=seed, verbose=-1, n_jobs=N_THREADS)
+             patience: int = 100, params: dict | None = None,
+             n_jobs: int | None = None) -> lgb.LGBMRegressor:
+    """LightGBM with the number of rounds chosen by early stopping on held-out engines.
+
+    ``params`` overrides entries of ``LGBM_DEFAULTS`` (used by the tuned recipe).
+    """
+    params = dict(n_estimators=n_estimators, **{**LGBM_DEFAULTS, **(params or {})},
+                  random_state=seed, verbose=-1, n_jobs=n_jobs or N_THREADS)
     metric = "l2"
     if quantile is not None:
         params.update(objective="quantile", alpha=quantile)

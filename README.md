@@ -63,7 +63,7 @@ All numbers come from one run of `turbofan run-all` (fit/calibration split seed 
 | LSTM | 15.39 ± 0.53 | 14.16 ± 0.36 | 18.71 ± 0.69 | **14.01** ± 0.55 |
 | Weibull AFT | 17.03 | 16.22 | 19.35 | 23.28 |
 
-The Weibull model has no training randomness, so it has no SD. Seed-to-seed SDs (0.06–1.53 cycles) are smaller than test-engine sampling noise: the 95% bootstrap intervals over test engines for seed 0 span about 3–7 cycles (LightGBM: [10.3, 15.4], [11.7, 14.5], [11.7, 16.7], [12.6, 16.2]). Mean NASA asymmetric score for LightGBM: 230 / 736 / 373 / 1002 on FD001–FD004.
+The Weibull model has no training randomness, so it has no SD. Seed-to-seed SDs (0.06–1.53 cycles) are smaller than test-engine sampling noise: the 95% bootstrap intervals over test engines for seed 0 span about 3–7 cycles (LightGBM: [10.3, 15.4], [11.7, 14.5], [11.7, 16.7], [12.6, 16.2]). Mean NASA asymmetric score for LightGBM: 230 / 736 / 373 / 1002 on FD001–FD004. The table uses LightGBM's fixed recipe; the Optuna search in [Does tuning help?](#does-tuning-help) lowers its RMSE beyond test-sampling noise on FD003 (12.80) and FD004 (14.38), and leaves FD001 and FD002 unchanged.
 
 Gradient boosting is still the most accurate on FD001–FD003, by 1.2–2.8 cycles over the best network. On FD004 (six operating conditions, two fault modes) the LSTM has the lowest mean RMSE, 14.01 against 14.64 for XGBoost. That margin is small: it is about one seed SD, the LSTM beat both boosted models in two of three seeds, and its NASA score (1081), which penalises late predictions more heavily, is worse than LightGBM's (1002). The fair reading is that on FD004 the tuned LSTM and boosting are tied, not that the LSTM wins.
 
@@ -97,6 +97,40 @@ Trusting the point estimate costs 2.6–4.4 times as much as the uncertainty-awa
 ![Coverage and width](docs/results/coverage_width.png)
 ![Cost vs margin](docs/results/cost_vs_margin.png)
 
+## Does tuning help?
+
+The LightGBM recipe above is fixed (learning rate 0.03, 31 leaves, 40 minimum child samples, 0.8 row and column sampling, no L2 penalty). `turbofan tune` asks whether a search does better. It runs an Optuna study (Akiba et al., 2019) per subset: TPE sampler with seed 0, the fixed recipe enqueued as trial 0, up to 100 trials over leaves (7–255), learning rate (0.01–0.2), minimum child samples (5–300), row sampling (0.5–1), column sampling (0.3–1) and L2 penalty (0–100), with the number of trees set by early stopping (cap 2000, patience 100). The objective is RMSE on validation engines: the 15% of fit engines that training seed 0 holds out for early stopping. The search trains on the other fit engines. Calibration and test engines are never read during the search, and a test checks that corrupting them leaves every trial unchanged. Both recipes then go through the full protocol for the LightGBM point model (seeds 0, 1, 2; split conformal on the calibration engines) and are scored once on the test engines. Intervals are 95% paired bootstraps of tuned minus default: over validation engines for the validation column, and over test engines (seed-mean difference) for the rest. Results are in [`docs/results/tuning.json`](docs/results/tuning.json) and [`tuning.md`](docs/results/tuning.md).
+
+The four subsets ran as parallel processes with 3 threads each, taking 26.7 minutes of wall-clock time. FD004 reached the 25-minute search limit after 83 trials; the others ran all 100. The default arm reproduced the published LightGBM numbers exactly, seed by seed.
+
+| Subset | Recipe | Val RMSE | Test RMSE | NASA score | SC coverage | SC width |
+|---|---|---|---|---|---|---|
+| FD001 | default | 15.82 | **12.33** ± 0.91 | **230** | **0.900** | 42.5 |
+| FD001 | tuned | **15.01** | 12.45 ± 0.85 | 239 | 0.893 | **40.3** |
+| | tuned − default | −0.81 [−1.38, −0.07] | +0.12 [−0.44, +0.62] | +10 [−9, +29] | −0.007 [−0.030, +0.017] | −2.1 [−2.2, −2.0] |
+| FD002 | default | 14.90 | 13.12 ± 0.06 | 736 | 0.920 | 46.5 |
+| FD002 | tuned | **14.66** | **13.07** ± 0.11 | **712** | **0.919** | **46.0** |
+| | tuned − default | −0.25 [−0.45, −0.02] | −0.05 [−0.37, +0.27] | −25 [−79, +24] | −0.001 [−0.012, +0.008] | −0.5 [−0.6, −0.5] |
+| FD003 | default | 14.68 | 13.89 ± 0.70 | 373 | **0.903** | 47.6 |
+| FD003 | tuned | **14.09** | **12.80** ± 0.51 | **282** | 0.893 | **44.5** |
+| | tuned − default | −0.58 [−1.29, +0.13] | −1.09 [−2.00, −0.12] | −91 [−192, −12] | −0.010 [−0.040, +0.020] | −3.1 [−3.2, −3.0] |
+| FD004 | default | 11.57 | 14.71 ± 0.29 | 1002 | 0.917 | **48.5** |
+| FD004 | tuned | **11.29** | **14.38** ± 0.20 | **973** | **0.910** | 48.7 |
+| | tuned − default | −0.28 [−0.59, +0.02] | −0.33 [−0.65, −0.02] | −29 [−86, +34] | −0.007 [−0.022, +0.008] | +0.3 [+0.2, +0.3] |
+
+Val RMSE is on the seed-0 validation engines; test columns are means over three seeds (± SD for RMSE). SC = split conformal at 90%. Bold marks the better recipe within each subset: lowest RMSE, NASA score and width, and coverage closest to the nominal 0.90.
+
+Tuned parameters (leaves, learning rate, minimum child samples, row sampling, column sampling, L2): FD001 10, 0.015, 23, 0.97, 0.75, 11.0; FD002 13, 0.026, 5, 0.58, 0.90, 1.9; FD003 7, 0.012, 41, 0.96, 0.91, 8.9; FD004 86, 0.010, 33, 0.90, 0.43, 9.7. Every subset moved to a lower learning rate with more trees and a nonzero L2 penalty.
+
+**Reading.** By construction the tuned recipe is at least as good as the default on validation. Those gains (0.25–0.81 cycles) are optimistic, because the winner was picked on the same engines, and on FD003 and FD004 their intervals include zero. On test:
+
+- **FD003 and FD004: tuning helps beyond noise.** RMSE falls by 1.09 cycles on FD003 (interval [−2.00, −0.12]) and 0.33 on FD004 ([−0.65, −0.02]). The FD003 NASA score also drops (−91, [−192, −12]). So LightGBM's headline RMSE becomes **12.80** on FD003 and **14.38** on FD004 with the tuned recipe. The point-accuracy table above keeps the default recipe so that every model there runs under the same protocol.
+- **FD001 and FD002: no detectable change.** The test RMSE intervals include zero (+0.12 and −0.05), so the published numbers stand.
+- **Conformal intervals are unchanged in substance.** Coverage moved by at most 0.010, and every coverage interval includes zero. Widths shrank by 2.1 and 3.1 cycles on FD001 and FD003. Those width intervals hold the calibration quantile fixed, so they cover test sampling only and understate the real uncertainty.
+- **Decisions are unchanged.** The cost of acting at the split-conformal lower bound changed by at most 0.05 per engine, and of the cost-tuned margin by at most 0.02, with intervals around zero. The only exception is a 0.01 drop for the margin policy on FD004. Failure rates at the conformal lower bound stay at 4–7%.
+
+None of the conclusions change. On FD004 the LSTM's lead over the best boosted model shrinks from 0.63 to 0.37 cycles (14.01 against 14.38), still within about one seed SD, so the two remain tied. Boosting's lead over the best network on FD003 grows from 2.7 to 3.8 cycles.
+
 A short summary is in [`docs/brief/brief.pdf`](docs/brief/brief.pdf).
 
 ## Limitations
@@ -117,16 +151,18 @@ pytest                           # synthetic data only, under a minute
 ruff check src tests
 turbofan smoke                   # tiny end-to-end run on synthetic engines
 turbofan run-all --data data/raw/cmapss --out docs/results   # full run: 3 seeds + tuning grid (CPU, 2 threads; about 2.5 h on a shared machine)
+turbofan tune --data data/raw/cmapss --out docs/results       # Optuna search for LightGBM + tuned-vs-default test (about 27 min, 4 subsets in parallel)
 python docs/brief/make_figures.py
 quarto render docs/brief/brief.qmd --to typst
 ```
 
-Package layout: `data.py` (loading and RUL targets), `preprocess.py` (normalisation, windows, features), `models.py`, `conformal.py`, `metrics.py`, `decision.py`, `pipeline.py`, `plots.py`, `synthetic.py`, `cli.py`.
+Package layout: `data.py` (loading and RUL targets), `preprocess.py` (normalisation, windows, features), `models.py`, `conformal.py`, `metrics.py`, `decision.py`, `pipeline.py`, `tuning.py`, `plots.py`, `synthetic.py`, `cli.py`.
 
 ## References
 
 - A. Saxena, K. Goebel, D. Simon, N. Eklund. *Damage propagation modeling for aircraft engine run-to-failure simulation.* International Conference on Prognostics and Health Management, 2008.
 - Y. Romano, E. Patterson, E. Candès. *Conformalized quantile regression.* NeurIPS, 2019.
+- T. Akiba, S. Sano, T. Yanase, T. Ohta, M. Koyama. *Optuna: A next-generation hyperparameter optimization framework.* KDD, 2019.
 
 ## License
 

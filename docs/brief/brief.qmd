@@ -111,9 +111,9 @@ All numbers come from one run of `turbofan run-all` (fit/calibration split seed 
 
 : Test RMSE in cycles, mean ± SD over three training seeds (lower is better; bold is the lowest mean). The Weibull model has no training randomness. LightGBM 95% bootstrap intervals over test engines (seed 0): FD001 [10.3, 15.4], FD002 [11.7, 14.5], FD003 [11.7, 16.7], FD004 [12.6, 16.2]. {#tbl-rmse}
 
-![Test RMSE by model and subset, mean and SD over three training seeds.](figures/rmse_by_model.png){#fig-rmse width=72%}
+![Test RMSE by model and subset, mean and SD over three training seeds.](figures/rmse_by_model.png){#fig-rmse width=54%}
 
-Gradient boosting remained the most accurate model on FD001–FD003, by 1.2–2.8 cycles over the best network. On FD004 the LSTM had the lowest mean RMSE (14.01 against 14.64 for XGBoost), but the margin is about one seed SD and its asymmetric score (1081) is worse than LightGBM's (1002), so the two are best read as tied there. Early stopping on held-out engines and a four-point tuning grid mostly helped the networks. In an earlier single-seed run that stopped on random windows, the LSTM scored 15.8 / 18.3 / 18.1 / 17.4 and the best network trailed boosting by 3.2–5.3 cycles. The boosted models lost up to 0.6 cycles, since they now train on 85% of the fit engines. Seed SDs (0.06–1.53 cycles) are much smaller than the test-sampling intervals. The survival model is weakest on FD004, where a linear model on a few principal components cannot absorb the remaining structure.
+Gradient boosting remained the most accurate model on FD001–FD003, by 1.2–2.8 cycles over the best network. On FD004 the LSTM had the lowest mean RMSE (14.01 against 14.64 for XGBoost), but the margin is about one seed SD and its asymmetric score (1081) is worse than LightGBM's (1002), so the two are best read as tied there. Engine-wise early stopping and a four-point grid mostly helped the networks: in an earlier single-seed run the best network trailed boosting by 3.2–5.3 cycles. Seed SDs (0.06–1.53 cycles) are much smaller than the test-sampling intervals. The survival model is weakest on FD004, where a linear model on a few principal components cannot absorb the remaining structure.
 
 ## Uncertainty
 
@@ -126,12 +126,12 @@ Gradient boosting remained the most accurate model on FD001–FD003, by 1.2–2.
 
 : Empirical coverage on the official test engines, mean over three seeds (mean width in cycles); target 0.90; bold is the coverage closest to the target. SC = split conformal. {#tbl-cov}
 
-![Coverage (left, dashed line = 90% target) and width (right) of each interval method.](figures/coverage_width.png){#fig-cov width=72%}
+![Coverage (left, dashed line = 90% target) and width (right) of each interval method.](figures/coverage_width.png){#fig-cov width=54%}
 
 The raw quantile model is overconfident: its "90%" intervals contained the true RUL for only 71–82% of engines. CQR fixed most of this at a cost of 3–9 extra cycles of width, but it was narrower than split conformal only on FD002 and fell below target on FD004 (0.88). Its quantile models were early-stopped after anywhere from 18 to 1240 rounds depending on the seed, which made its width unstable. Split conformal on LightGBM covered 0.90–0.92 on every subset. Interval width tracks accuracy: the LSTM's intervals are about as wide as LightGBM's on FD002 and FD004, where the two are similarly accurate, and 8–10 cycles wider on FD001 and FD003.
 
 
-![FD001 test engines sorted by true RUL: LightGBM predictions with CQR 90% intervals. Engines near the 125-cycle cap are hard to tell apart; the interval widens accordingly.](figures/intervals_FD001.png){#fig-int width=64%}
+![FD001 test engines sorted by true RUL: LightGBM predictions with CQR 90% intervals. Engines near the 125-cycle cap are hard to tell apart; the interval widens accordingly.](figures/intervals_FD001.png){#fig-int width=48%}
 
 ## From predictions to maintenance decisions
 
@@ -144,27 +144,60 @@ The raw quantile model is overconfident: its "90%" intervals contained the true 
 
 : Mean cost per test engine over three seeds (share of engines that fail before maintenance). Tuned margins ranged over 34–36, 40–42, 39–40 and 42–45 cycles across seeds. Bold marks the lowest cost and failure rate. {#tbl-cost}
 
-![Mean cost against safety margin. Calibration curves (dotted) and test curves (solid) bottom out in the same region, so a margin chosen on held-out engines transfers to new engines.](figures/cost_vs_margin.png){#fig-cost width=62%}
+![Mean cost against safety margin. Calibration curves (dotted) and test curves (solid) bottom out in the same region, so a margin chosen on held-out engines transfers to new engines.](figures/cost_vs_margin.png){#fig-cost width=46%}
 
 Acting on the point estimate is the worst policy by a wide margin: about half of the engines fail first. A conformal lower bound needs no cost assumptions and already cuts failures to 4–9% and cost by 2.6–3.7×. When the cost ratio is known, a margin tuned on calibration engines is cheapest on every subset. The price is giving up more useful life, 32–46 cycles per engine on average against 18–32 for the lower bounds.
 
+
+## Does tuning help?
+
+An Optuna study [@akiba2019optuna] per subset searched LightGBM's leaves, learning rate, minimum child samples, row and column sampling and L2 penalty (TPE with seed 0, up to 100 trials, the fixed recipe as trial 0, trees by early stopping). It minimised RMSE on the 15% of fit engines held out by seed 0 and never read calibration or test engines. Both recipes then ran the full protocol and were scored once on test. The run took 26.7 minutes with subsets in parallel; FD004 hit its time limit after 83 trials.
+
+```{=typst}
+#set text(size: 9pt)
+#set table(inset: (x: 5pt, y: 3pt))
+```
+
+| Subset, recipe | Val RMSE | Test RMSE | NASA | Coverage | Width |
+|--------------|-------------------|-------------------|---------------|-----------------|-----------------|
+| FD001 default | 15.82 | **12.33** | **230** | **0.900** | 42.5 |
+| tuned | **15.01** | 12.45 | 239 | 0.893 | **40.3** |
+| difference | −0.81 [−1.38, −0.07] | +0.12 [−0.44, +0.62] | +10 [−9, +29] | −0.7 [−3.0, +1.7] | −2.1 [−2.2, −2.0] |
+| FD002 default | 14.90 | 13.12 | 736 | 0.920 | 46.5 |
+| tuned | **14.66** | **13.07** | **712** | **0.919** | **46.0** |
+| difference | −0.25 [−0.45, −0.02] | −0.05 [−0.37, +0.27] | −25 [−79, +24] | −0.1 [−1.2, +0.8] | −0.5 [−0.6, −0.5] |
+| FD003 default | 14.68 | 13.89 | 373 | **0.903** | 47.6 |
+| tuned | **14.09** | **12.80** | **282** | 0.893 | **44.5** |
+| difference | −0.58 [−1.29, +0.13] | −1.09 [−2.00, −0.12] | −91 [−192, −12] | −1.0 [−4.0, +2.0] | −3.1 [−3.2, −3.0] |
+| FD004 default | 11.57 | 14.71 | 1002 | 0.917 | **48.5** |
+| tuned | **11.29** | **14.38** | **973** | **0.910** | 48.7 |
+| difference | −0.28 [−0.59, +0.02] | −0.33 [−0.65, −0.02] | −29 [−86, +34] | −0.7 [−2.2, +0.8] | +0.3 [+0.2, +0.3] |
+
+: Default against tuned LightGBM. Val RMSE: seed-0 validation engines; test columns: means over three seeds; coverage and width: 90% split-conformal intervals. Difference = tuned − default (coverage in percentage points) with a 95% paired bootstrap interval (validation engines for Val RMSE, test engines otherwise). Bold marks the better recipe within each subset: lowest RMSE, NASA score and width, coverage closest to the nominal 0.90. {#tbl-tune}
+
+```{=typst}
+#set text(size: 10.5pt)
+#set table(inset: 5pt)
+```
+
+Every subset moved to a lower learning rate, more trees and a nonzero L2 penalty. Validation gains are optimistic (the winner was chosen there). On test, tuning helps beyond noise on FD003 (−1.09 cycles) and FD004 (−0.33), so LightGBM's RMSE there becomes 12.80 and 14.38. On FD001 and FD002 the intervals include zero, and the published numbers stand. Coverage and decision costs barely move (by at most 0.010 and 0.05), and no conclusion changes: on FD004 the LSTM's lead shrinks to 0.37 cycles, still a tie.
 
 # What this demonstrates
 
 - *Evaluation discipline.* Engine-level splits, early stopping and tuning on held-out engines rather than random windows, a calibration set that no model trains on or is selected with, official test sets used once, one prediction per engine, three training seeds, and bootstrap confidence intervals rather than bare point estimates.
 - *Uncertainty quantification that is checked, not assumed.* Two conformal methods implemented from first principles and verified against a deliberately overconfident baseline, with a unit test confirming 90% coverage on synthetic data.
 - *Decision-focused ML.* An explicit cost model, a policy tuned on held-out data, and an honest statement of what each policy trades away.
-- *Engineering.* An installable package with a CLI, 11 tests on synthetic C-MAPSS-format data (no downloads in CI), ruff-clean code, and CI on Python 3.10–3.12.
+- *Engineering.* An installable package with a CLI, 16 tests on synthetic C-MAPSS-format data (no downloads in CI), ruff-clean code, and CI on Python 3.10–3.12.
 
 # Limitations and next steps
 
 - *Three seeds, one split.* Seed SDs cover training randomness and the choice of early-stopping engines; the fit/calibration split is fixed. Repeating over calibration splits is the next step.
 - *Approximate guarantee.* Conformal coverage assumes calibration and test points are exchangeable. Windows from one engine are correlated, and test engines are truncated snapshots, so the guarantee holds only approximately. Seed-averaged conformal coverage ranged from 0.86 to 0.93 (0.84 to 0.95 for single seeds). Weighted or engine-blocked calibration would tighten this.
 - *Marginal coverage only.* Coverage is averaged over engines, not guaranteed within each RUL range. Coverage is also scored against the capped truth.
-- *Light tuning and illustrative costs.* The networks had a four-point grid scored on one seed; the CNN chose the grid's corner (smallest width, larger learning rate) on every subset, so its search was not exhaustive. The cost model (failure = 10× a planned visit, 0.01 per wasted cycle) is illustrative.
+- *Light network tuning and illustrative costs.* The networks had a four-point grid scored on one seed, and the CNN chose its corner on every subset. The cost model (failure = 10× a planned visit, 0.01 per wasted cycle) is illustrative.
 - *Simulated data.* C-MAPSS is simulated, so any real fleet application would need re-validation on real sensor data.
 
 # How to run it
 
-`pip install -e ".[dev]"`, then `pytest`, `turbofan smoke` (synthetic check) and `turbofan run-all --data data/raw/cmapss` (full run). Data: NASA Prognostics Center of Excellence repository (`CMAPSSData.zip` into `data/raw/cmapss/`).
+`pip install -e ".[dev]"`, then `pytest`, `turbofan smoke` (synthetic check) and `turbofan run-all --data data/raw/cmapss` (full run); `turbofan tune` runs the Optuna study. Data: NASA Prognostics Center of Excellence repository (`CMAPSSData.zip` into `data/raw/cmapss/`).
 
