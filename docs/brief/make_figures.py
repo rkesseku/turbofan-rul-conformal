@@ -38,20 +38,24 @@ def architecture():
     box(ax, 2.6, 2.5, 2.2, 1.9, "Preprocess",
         "engine-level split\n75% fit / 25% calibrate\n(15% of fit engines\nfor early stopping)\nper-condition z-score")
     box(ax, 5.2, 2.5, 2.2, 1.9, "Models",
-        "LightGBM, XGBoost\n(window features)\n1D-CNN, LSTM\nWeibull AFT survival\n3 training seeds")
+        "LightGBM, XGBoost\n(window features)\n1D-CNN, LSTM\n(3 training seeds)\nWeibull AFT survival")
     box(ax, 7.8, 2.5, 2.1, 1.9, "Conformal",
         "split conformal\nCQR on LightGBM\nquantiles (5%, 95%)\ntarget: 90% coverage")
-    box(ax, 2.6, 0.15, 3.2, 1.8, "Evaluate (official test sets)",
+    box(ax, 2.6, 0.15, 3.2, 1.5, "Evaluate (official test sets)",
         "RMSE + bootstrap CI, NASA score\n"
         "coverage and width per subset\none prediction per test engine")
-    box(ax, 6.3, 0.15, 3.6, 1.8, "Maintenance decision",
+    box(ax, 6.3, 0.15, 3.6, 1.5, "Maintenance decision",
         "schedule at predicted RUL - margin\nfailure = 10x planned visit\n"
         "margin tuned on calibration engines\nvs. conformal lower bound")
     arrow(ax, 2.2, 3.45, 2.6, 3.45)
     arrow(ax, 4.8, 3.45, 5.2, 3.45)
     arrow(ax, 7.4, 3.45, 7.8, 3.45)
-    arrow(ax, 6.3, 2.5, 4.6, 1.95)
-    arrow(ax, 8.85, 2.5, 8.6, 1.95)
+    # Point predictions feed both evaluation and the margin policy, and conformal intervals
+    # feed both coverage/width evaluation and the lower-bound policies (pipeline._evaluate_seed).
+    arrow(ax, 5.5, 2.5, 5.5, 1.67)
+    arrow(ax, 6.9, 2.5, 6.9, 1.67)
+    arrow(ax, 8.1, 2.5, 5.75, 1.67)
+    arrow(ax, 8.85, 2.5, 8.85, 1.67)
     fig.tight_layout()
     fig.savefig(FIG / "architecture.png", dpi=220)
     plt.close(fig)
